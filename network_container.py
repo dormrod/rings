@@ -40,6 +40,15 @@ class NetworkContainer:
         self.num_nodes = len(self.nodes)
 
 
+    def unique_nodes(self):
+        """
+        Make nodes unique
+        """
+
+        self.nodes = list(set(self.nodes))
+        self.num_nodes = len(self.nodes)
+
+
     def add_ring(self,rid):
         """
         Add ring id.
@@ -47,6 +56,15 @@ class NetworkContainer:
 
         self.rings.append(rid)
         self.num_rings += 1
+
+
+    def swap_ring(self,delId,addId):
+        """
+        Swap instances of ring id for another.
+        """
+
+        self.rings = list(set([i if i != delId else addId for i in self.rings]))
+        self.num_rings = len(self.rings)
 
 
     def get_nodes(self):
@@ -57,12 +75,38 @@ class NetworkContainer:
         return self.nodes
 
 
-    # def get_edges(self):
-    #     """
-    #     Get edge ids.
-    #     """
-    #
-    #     return self.edges
+    def get_edges(self):
+        """
+        Get node pair ids forming edges.
+        """
+
+        edges = [[self.nodes[i],self.nodes[(i+1)%self.num_nodes]] for i in range(self.num_nodes)]
+        return edges
+
+
+    def check_edge(self,nid0,nid1):
+        """
+        Check node ids adajacent.
+        """
+
+        pos0 = -1
+        for i,n in enumerate(self.nodes):
+            if n==nid0:
+                pos0=i
+                break
+
+        if pos0==-1: return False
+        if self.nodes[(pos0+1)%self.num_nodes]==nid1: return True
+        elif self.nodes[(pos0+self.num_nodes-1)%self.num_nodes]==nid1: return True
+        else: return False
+
+
+    def get_rings(self):
+        """
+        Get ids of rings
+        """
+
+        return self.rings
 
 
     def clear(self):
@@ -75,4 +119,13 @@ class NetworkContainer:
         self.num_nodes = 0
         self.num_rings = 0
         self.active = False
+
+
+    def clear_rings(self):
+        """
+        Remove all associated rings.
+        """
+
+        self.rings = []
+        self.num_rings = 0
 

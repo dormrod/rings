@@ -129,8 +129,8 @@ class Plot:
         self.ax.scatter(self.node_crds[:,0]+x_shift*self.pbc[0],self.node_crds[:,1]+y_shift*self.pbc[1],
                         marker="o",s=self.ms,c=self.mc,zorder=1)
 
-        # for i,c in enumerate(self.node_crds):
-        #     self.ax.text(c[0],c[1],i,size=8)
+        for i,c in enumerate(self.node_crds):
+            self.ax.text(c[0],c[1],i,size=8)
 
 
     def plot_cnxs(self,x_shift,y_shift):
