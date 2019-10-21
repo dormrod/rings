@@ -72,13 +72,13 @@ class Plot:
         """
 
         # Node coordination, periodicity and node crds
-        self.pbc = network.cell_dim
-        self.mic = self.pbc/2
+        self.pbc = network.pbc
+        self.mic = network.mic
         self.node_crds = network.get_node_crds()
         self.mean_ring_size = 6 # self.node_cnxs = []
 
         # Make connections accounting for periodicity
-        self.node_cnxs = network.get_edges()
+        self.node_cnxs = network.get_edges(unique=False)
         self.node_cnx_crds = np.zeros((self.node_cnxs.shape[0],4))
         crd_i = np.zeros(2)
         crd_j = np.zeros(2)
@@ -92,9 +92,9 @@ class Plot:
             if y>self.mic[1]: y-=self.pbc[1]
             elif y<-self.mic[1]: y+=self.pbc[1]
             self.node_cnx_crds[i,0] = crd_i[0]
-            self.node_cnx_crds[i,1] = crd_i[0]+x
+            self.node_cnx_crds[i,1] = crd_i[0]+x/2
             self.node_cnx_crds[i,2] = crd_i[1]
-            self.node_cnx_crds[i,3] = crd_i[1]+y
+            self.node_cnx_crds[i,3] = crd_i[1]+y/2
 
         # Make rings accounting for periodicity
         self.node_rings = network.get_rings()
@@ -116,6 +116,11 @@ class Plot:
             self.ring_crds.append(crds)
             if ring.size > self.max_ring_size:
                 self.max_ring_size = ring.size
+        self.perimeter_ring = network.get_rings(True)
+        self.perimeter_ring_crds = []
+        for i in self.perimeter_ring:
+            self.perimeter_ring_crds.append(self.node_crds[i,:])
+        self.perimeter_ring_crds = np.array(self.perimeter_ring_crds)
         self.init_ring_colours(self.mean_ring_size,self.max_ring_size)
 
 
@@ -129,8 +134,8 @@ class Plot:
         self.ax.scatter(self.node_crds[:,0]+x_shift*self.pbc[0],self.node_crds[:,1]+y_shift*self.pbc[1],
                         marker="o",s=self.ms,c=self.mc,zorder=1)
 
-        for i,c in enumerate(self.node_crds):
-            self.ax.text(c[0],c[1],i,size=8)
+        # for i,c in enumerate(self.node_crds):
+        #     self.ax.text(c[0],c[1],i,size=8)
 
 
     def plot_cnxs(self,x_shift,y_shift):
@@ -165,6 +170,16 @@ class Plot:
             ring[:,0]-=x_shift*self.pbc[0]
             ring[:,1]-=y_shift*self.pbc[1]
         self.ax.add_collection(PatchCollection(patches,facecolor=colours,linewidths=self.lw,edgecolor="k",zorder=0))
+
+        patches = []
+        for ring in self.perimeter_ring_crds:
+            ring[:,0] += x_shift*self.pbc[0]
+            ring[:,1] += y_shift*self.pbc[1]
+            patches.append(Polygon(np.array(ring), True))
+            ring[:,0]-=x_shift*self.pbc[0]
+            ring[:,1]-=y_shift*self.pbc[1]
+        self.ax.add_collection(PatchCollection(patches,facecolor=(0,0,0,0),linewidths=self.lw*3,edgecolor="orange",zorder=0))
+
 
 
     def init_ring_colours(self,av_ring_size=6,max_ring_size=10):

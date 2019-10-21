@@ -1,3 +1,5 @@
 .idea/*
 *.dat
+*.png
+figures/*
 __pycache__/*

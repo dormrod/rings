@@ -3,19 +3,23 @@ from node import Node
 from ring import Ring
 from scipy.spatial import Delaunay
 from plot_network import Plot
+import matplotlib.pyplot as plt
 
 class Network:
     """
     Class to store nodes, edges and rings.
     """
 
-    def __init__(self,node_crds,cell_dim):
+    def __init__(self,node_crds,cell_dim,periodic=False):
         """
         Initialise with node coordinates, cell information.
         """
 
         # Set cell dimensions
+        self.periodic = periodic
         self.cell_dim = cell_dim
+        self.pbc =  np.array([self.cell_dim[0,1]-self.cell_dim[0,0],self.cell_dim[1,1]-self.cell_dim[1,0]])
+        self.mic = self.pbc / 2.0
 
         # Set id logs
         self.next_node_id = 0
@@ -39,28 +43,34 @@ class Network:
         """
 
         # Loop over edges and add node connections
-        for edge in edges:
-            # --- Little hack to remove periodicity ---#
-            crd0 = self.nodes[edge[0]].get_crd()
-            crd1 = self.nodes[edge[1]].get_crd()
-            dx = np.abs(crd0[0]-crd1[0])
-            dy = np.abs(crd0[1]-crd1[1])
-            mic = (self.cell_dim[1]-self.cell_dim[0])/2.0
-            if dx>mic or dy>mic:
-                accept = False
-            else:
-                accept = True
-            # --- Little hack over ---#
-            if accept:
+        if self.periodic:
+            for edge in edges:
                 self.nodes[edge[0]].add_node(edge[1])
                 self.nodes[edge[1]].add_node(edge[0])
+        else:
+            # If aperiodic explicitly remove any connections greater than wrapping
+            for edge in edges:
+                crd0 = self.nodes[edge[0]].get_crd()
+                crd1 = self.nodes[edge[1]].get_crd()
+                dx = np.abs(crd0[0]-crd1[0])
+                dy = np.abs(crd0[1]-crd1[1])
+                if dx>self.mic[0] or dy>self.mic[1]:
+                    accept = False
+                else:
+                    accept = True
+                if accept:
+                    self.nodes[edge[0]].add_node(edge[1])
+                    self.nodes[edge[1]].add_node(edge[0])
 
-        # Deactivate any nodes which are 1-coordinate
+        # Deactivate any nodes which are 0/1-coordinate
         while True:
             clean = True
             for n in self.nodes:
                 if n.active:
-                    if n.num_nodes == 1:
+                    if n.num_nodes == 0:
+                        clean = False
+                        self.nodes[n.id].clear()
+                    elif n.num_nodes == 1:
                         clean = False
                         nid0 = n.id
                         nids = n.get_nodes()
@@ -84,33 +94,87 @@ class Network:
                 active_map.append(i)
                 active_crds.append(n.get_crd())
         active_crds = np.array(active_crds)
+        num_active = active_crds.shape[0]
+
+        # Make periodic images if required
+        if self.periodic:
+            central_crds = np.copy(active_crds)
+            active_crds = np.zeros((9*num_active,2))
+            active_crds[:num_active,:] = central_crds
+            counter = num_active
+            for i,y in enumerate([-1,0,1]):
+                for j,x in enumerate([-1,0,1]):
+                    if y!=0 or x!=0:
+                        active_crds[counter:counter+num_active,0] = central_crds[:,0]+x*self.pbc[0]
+                        active_crds[counter:counter+num_active,1] = central_crds[:,1]+y*self.pbc[1]
+                        counter += num_active
+        # self.fig = plt.figure()
+        # self.ax = self.fig.add_subplot(111)
+        # self.ax.scatter(active_crds[:,0], active_crds[:,1],marker="o",s=2,c='k',zorder=1)
+        # for i,c in enumerate(active_crds):
+        #     self.ax.text(c[0],c[1],i,size=6)
+
 
         # Triangulate active nodes and find rings
         delaunay = Delaunay(active_crds)
-        for simplex in delaunay.simplices:
-            r = Ring(self.next_ring_id)
-            nid0 = active_map[simplex[0]]
-            nid1 = active_map[simplex[1]]
-            nid2 = active_map[simplex[2]]
-            r.add_node(nid0)
-            r.add_node(nid1)
-            r.add_node(nid2)
-            self.nodes[nid0].add_ring(r.id)
-            self.nodes[nid1].add_ring(r.id)
-            self.nodes[nid2].add_ring(r.id)
-            self.nodes[nid0].add_node(nid1)
-            self.nodes[nid0].add_node(nid2)
-            self.nodes[nid1].add_node(nid0)
-            self.nodes[nid1].add_node(nid2)
-            self.nodes[nid2].add_node(nid0)
-            self.nodes[nid2].add_node(nid1)
-            self.next_ring_id += 1
-            self.rings.append(r)
+        if self.periodic:
+            added_simplices = []
+            for simplex in delaunay.simplices:
+                if np.any(simplex<num_active):
+                    nid3 = simplex[0]
+                    nid4 = simplex[1]
+                    nid5 = simplex[2]
+                    simplex = np.sort(simplex%num_active).astype(int)
+                    nid0 = active_map[simplex[0]]
+                    nid1 = active_map[simplex[1]]
+                    nid2 = active_map[simplex[2]]
+                    simplex_id = "#{}#{}#{}".format(nid0,nid1,nid2)
+                    if simplex_id not in added_simplices:
+                        # self.ax.plot([active_crds[nid3,0],active_crds[nid4,0]],[active_crds[nid3,1],active_crds[nid4,1]])
+                        # self.ax.plot([active_crds[nid3,0],active_crds[nid5,0]],[active_crds[nid3,1],active_crds[nid5,1]])
+                        # self.ax.plot([active_crds[nid5,0],active_crds[nid4,0]],[active_crds[nid5,1],active_crds[nid4,1]])
+                        r = Ring(self.next_ring_id)
+                        r.add_node(nid0)
+                        r.add_node(nid1)
+                        r.add_node(nid2)
+                        self.nodes[nid0].add_ring(r.id)
+                        self.nodes[nid1].add_ring(r.id)
+                        self.nodes[nid2].add_ring(r.id)
+                        self.nodes[nid0].add_node(nid1)
+                        self.nodes[nid0].add_node(nid2)
+                        self.nodes[nid1].add_node(nid0)
+                        self.nodes[nid1].add_node(nid2)
+                        self.nodes[nid2].add_node(nid0)
+                        self.nodes[nid2].add_node(nid1)
+                        self.next_ring_id += 1
+                        self.rings.append(r)
+                        added_simplices.append(simplex_id)
+        else:
+            for simplex in delaunay.simplices:
+                nid0 = active_map[simplex[0]]
+                nid1 = active_map[simplex[1]]
+                nid2 = active_map[simplex[2]]
+                r = Ring(self.next_ring_id)
+                r.add_node(nid0)
+                r.add_node(nid1)
+                r.add_node(nid2)
+                self.nodes[nid0].add_ring(r.id)
+                self.nodes[nid1].add_ring(r.id)
+                self.nodes[nid2].add_ring(r.id)
+                self.nodes[nid0].add_node(nid1)
+                self.nodes[nid0].add_node(nid2)
+                self.nodes[nid1].add_node(nid0)
+                self.nodes[nid1].add_node(nid2)
+                self.nodes[nid2].add_node(nid0)
+                self.nodes[nid2].add_node(nid1)
+                self.next_ring_id += 1
+                self.rings.append(r)
         for n in self.nodes:
             n.unique_nodes()
 
         # Add perimeter ring
-        self.find_perimeter()
+        if not self.periodic:
+            self.find_perimeter()
 
 
     def find_perimeter(self):
@@ -216,6 +280,8 @@ class Network:
                 self.rings[rids[1]].clear()
             self.rings.append(r)
             self.next_ring_id += 1
+            # plot=Plot(nodes=True,rings=True)
+            # plot(self,ms=20,save=False)
 
 
     def get_node_crds(self):
@@ -229,28 +295,38 @@ class Network:
         return np.array(crds)
 
 
-    def get_edges(self):
+    def get_edges(self,unique=True):
         """
         Get node ids that make up edges.
         """
 
         edges = []
-        for n in self.nodes:
-            if n.active:
-                nid0 = n.id
-                for nid1 in n.get_nodes():
-                    if nid0<nid1:
+        if unique:
+            for n in self.nodes:
+                if n.active:
+                    nid0 = n.id
+                    for nid1 in n.get_nodes():
+                        if nid0<nid1:
+                            edges.append([nid0,nid1])
+        else:
+            for n in self.nodes:
+                if n.active:
+                    nid0 = n.id
+                    for nid1 in n.get_nodes():
                         edges.append([nid0,nid1])
+
         return np.array(edges,dtype=int)
 
 
-    def get_rings(self):
+    def get_rings(self,infinite=False):
         """
         Get node ids that make up rings.
         """
 
         rings = []
         for r in self.rings:
-            if r.active and not r.infinite:
+            if r.active and r.infinite==infinite:
                 rings.append(np.array(r.get_nodes(),dtype=int))
         return rings
+
+
